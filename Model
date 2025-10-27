@@ -1,0 +1,124 @@
+import pandas as pd
+from pyomo.environ import *
+import numpy as np
+import math
+
+excel_path = 'your_excel_file.xlsx'  # please set your Excel path
+data = pd.read_excel(excel_path)
+
+# English reservoir names
+reservoirs = ['Hongze', 'Luoma', 'Xiaji', 'Shangji', 'Dongping']
+reservoir_names = ['Hongze', 'Luoma', 'Xiaji', 'Shangji', 'Dongping']
+
+# English Excel column names (make sure your Excel file uses these)
+initial_storage = dict(zip(reservoirs, data['Initial_Storage'].values))
+inflow = {res: data[f'{res}_Inflow'].values for res in reservoirs}
+water_demand = {res: data[f'{res}_Demand'].values for res in reservoirs}
+upper_limit = {res: data[f'{res}_UpperLimit'].values for res in reservoirs}
+lower_limit = {res: data[f'{res}_LowerLimit'].values for res in reservoirs}
+local_transfer_limit = {res: data[f'{res}_LocalLimit'].values for res in reservoirs}
+ecological_storage = {res: data[f'{res}_EcoStorage'].values for res in reservoirs}
+total_source_limit = data['Total_Source_Limit'].values[0]
+total_waste_limit = data['Total_Waste_Limit'].values[0]
+
+months = range(12)
+results = []
+
+
+# ----- Objective functions -----
+def obj1_rule(model):
+    total_shortage = sum(
+        ((water_demand[res][m] - model.supply[res, m]) / water_demand[res][m]) ** 2
+        for res in reservoirs for m in months if water_demand[res][m] > 0
+    )
+    return total_shortage / (len(reservoirs) * len(months)) * 100
+
+
+def obj2_rule(model):
+    return sum(model.source_flow[m] for m in months)
+
+
+model.obj = Objective(rule=combined_obj_rule, sense=minimize if sense == 'minimize' else maximize)
+
+
+# ----- Water balance constraints -----
+def water_balance_rule(model, res, m):
+    if res == 'Dongping':
+        if m == 0:
+            return model.storage[res, m] == initial_storage[res] + inflow[res][m] + model.inflow_transfer[res, m] - model.supply[res, m] - model.waste[res, m]
+        else:
+            return model.storage[res, m] == model.storage[res, m - 1] + inflow[res][m] + model.inflow_transfer[res, m] - model.supply[res, m] - model.waste[res, m]
+    else:
+        if m == 0:
+            return model.storage[res, m] == initial_storage[res] + inflow[res][m] + model.inflow_transfer[res, m] - model.supply[res, m] - model.outflow_transfer[res, m] - model.waste[res, m]
+        else:
+            return model.storage[res, m] == model.storage[res, m - 1] + inflow[res][m] + model.inflow_transfer[res, m] - model.supply[res, m] - model.outflow_transfer[res, m] - model.waste[res, m]
+
+
+model.water_balance = Constraint(reservoirs, months, rule=water_balance_rule)
+
+
+# ----- Storage limits -----
+def storage_upper_limit_rule(model, res, m):
+    return model.storage[res, m] <= upper_limit[res][m]
+
+
+def storage_lower_limit_rule(model, res, m):
+    return model.storage[res, m] >= lower_limit[res][m]
+
+
+model.storage_upper_limit = Constraint(reservoirs, months, rule=storage_upper_limit_rule)
+model.storage_lower_limit = Constraint(reservoirs, months, rule=storage_lower_limit_rule)
+
+
+# ----- Supply limit -----
+def supply_limit_rule(model, res, m):
+    return model.supply[res, m] <= water_demand[res][m]
+
+
+model.supply_limit = Constraint(reservoirs, months, rule=supply_limit_rule)
+
+
+# ----- End storage constraint -----
+def initial_final_storage_rule(model, res):
+    return model.storage[res, 11] == initial_storage[res]
+
+
+model.initial_final_storage = Constraint(reservoirs, rule=initial_final_storage_rule)
+
+
+# ----- Local transfer limit -----
+def local_transfer_limit_rule(model, res, m):
+    return model.outflow_transfer[res, m] - model.inflow_transfer[res, m] <= local_transfer_limit[res][m]
+
+
+model.local_transfer_limit = Constraint([res for res in reservoirs if res != 'Dongping'], months, rule=local_transfer_limit_rule)
+
+
+# ----- Hydraulic transfer -----
+def hydraulic_transfer_rule(model, res, m):
+    if res == 'Hongze':
+        return model.inflow_transfer[res, m] == model.source_flow[m]
+    else:
+        prev_res = reservoirs[reservoirs.index(res) - 1]
+        if prev_res == 'Dongping':
+            return Constraint.Skip
+        return model.inflow_transfer[res, m] == model.outflow_transfer[prev_res, m]
+
+
+model.hydraulic_transfer = Constraint(reservoirs, months, rule=hydraulic_transfer_rule)
+
+
+# ----- Total limits -----
+def total_source_flow_limit_rule(model):
+    return sum(model.source_flow[m] for m in months) <= total_source_limit
+
+
+model.total_source_flow_limit = Constraint(rule=total_source_flow_limit_rule)
+
+
+def total_waste_limit_rule(model):
+    return sum(model.waste[res, m] for res in reservoirs for m in months) <= total_waste_limit
+
+
+model.total_waste_limit = Constraint(rule=total_waste_limit_rule)
