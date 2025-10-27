@@ -1,0 +1,170 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial import ConvexHull
+from openpyxl import load_workbook
+import matplotlib.font_manager as fm
+from matplotlib.colors import LinearSegmentedColormap
+
+# Set fonts (prefer Microsoft YaHei, fallback Source Han Sans CN) — kept for robustness
+available_fonts = [f.name for f in fm.fontManager.ttflist]
+if 'Microsoft YaHei' in available_fonts:
+    plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']
+elif 'Source Han Sans CN' in available_fonts:
+    plt.rcParams['font.sans-serif'] = ['Source Han Sans CN']
+else:
+    print("Warning: Microsoft YaHei or Source Han Sans CN not found. Using default font, which may not display CJK characters properly.")
+plt.rcParams['axes.unicode_minus'] = False  # Fix minus sign rendering
+
+# Load Times New Roman (fallback DejaVu Serif)
+if 'Times New Roman' in available_fonts:
+    times_font = fm.FontProperties(family='Times New Roman')
+else:
+    times_font = fm.FontProperties(family='DejaVu Serif')
+    print("Warning: Times New Roman not found. Using DejaVu Serif as fallback.")
+
+# Check whether a point is inside the convex hull (ray casting)
+def is_point_inside_hull(point, hull):
+    n_intersections = 0
+    n = len(hull.vertices)
+    x, y = point
+
+    for i in range(n):
+        v1 = hull.points[hull.vertices[i]]
+        v2 = hull.points[hull.vertices[(i + 1) % n]]
+        if (v1[1] > y) != (v2[1] > y):
+            if x < (v2[0] - v1[0]) * (y - v1[1]) / (v2[1] - v1[1]) + v1[0]:
+                n_intersections += 1
+    return n_intersections % 2 == 1
+
+# Load Excel data
+def load_data(file_path):
+    wb = load_workbook(file_path)
+    ws = wb.active
+    f1_data = []
+    f2_data = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        f1_data.append(row[5])  # original: column index 5
+        f2_data.append(row[4])  # original: column index 4
+    return np.column_stack((f1_data, f2_data))
+
+# Plot scatter and convex hull
+def plot_convex_hull(points):
+    if len(points) < 3:
+        raise ValueError("Insufficient points to compute a convex hull (need at least 3).")
+
+    # Figure and axis
+    fig, ax = plt.subplots(figsize=(10, 8), dpi=100)
+
+    # Compute convex hull
+    hull = ConvexHull(points)
+    hull_vertices = hull.vertices
+    exterior_points = points[hull_vertices]
+
+    # Custom gradient colormap
+    cmap = LinearSegmentedColormap.from_list('custom', ['#1E90FF', '#00CED1'])
+
+    # Hull filled polygon (semi-transparent gradient-like effect)
+    hull_polygon = plt.Polygon(
+        exterior_points,
+        closed=True,
+        facecolor=cmap(0.3),
+        alpha=0.3,
+        edgecolor='none',
+        zorder=1
+    )
+    ax.add_patch(hull_polygon)
+
+    # Hull edges
+    for simplex in hull.simplices:
+        ax.plot(
+            points[simplex, 0],
+            points[simplex, 1],
+            color='#8B0000',
+            linewidth=2.5,
+            linestyle='-',
+            zorder=3,
+            label='Boundary range of the objective space'
+                  if 'Boundary range of the objective space' not in [l.get_label() for l in ax.get_lines()]
+                  else ""
+        )
+
+    # Hull vertices (with gradient sizes and colors)
+    sizes = np.linspace(100, 200, len(exterior_points))
+    colors = [cmap(i / len(exterior_points)) for i in range(len(exterior_points))]
+    ax.scatter(
+        exterior_points[:, 0],
+        exterior_points[:, 1],
+        c=colors,
+        s=sizes,
+        edgecolor='black',
+        linewidth=0.8,
+        alpha=0.9,
+        label='Boundary points of the objective space',
+        zorder=5
+    )
+
+    # Grid and axes lines
+    ax.grid(True, linestyle='--', color='gray', alpha=0.4, zorder=0)
+    ax.axhline(0, color='black', linewidth=1, zorder=2)
+    ax.axvline(0, color='black', linewidth=1, zorder=2)
+
+    # English title and labels
+    ax.set_title('Convex Hull of Objective Space', fontsize=20, pad=15, fontweight='bold')
+    ax.set_xlabel('F1 Axis', fontsize=16, labelpad=10, fontproperties=times_font)
+    ax.set_ylabel('F2 Axis', fontsize=16, labelpad=10, fontproperties=times_font)
+
+    # Legend
+    ax.legend(
+        loc='upper right',
+        fontsize=30,
+        frameon=True,
+        framealpha=0.9,
+        edgecolor='black',
+        facecolor='white',
+        prop=times_font
+    )
+
+    # Axis ranges
+    ax.set_xlim(0, 50)
+    ax.set_ylim(bottom=0)
+
+    # Tick styling
+    ax.tick_params(axis='both', which='major', labelsize=18, labelcolor='black')
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontproperties(times_font)
+
+    # Backgrounds
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('#F8F9FA')
+
+    # Layout
+    plt.tight_layout()
+
+    # Show
+    plt.show()
+
+    # Count interior points
+    interior_points = []
+    all_indices = set(range(len(points)))
+    hull_indices = set(hull_vertices)
+    remaining_indices = all_indices - hull_indices
+
+    for idx in remaining_indices:
+        if is_point_inside_hull(points[idx], hull):
+            interior_points.append(points[idx])
+
+    interior_points = np.array(interior_points) if interior_points else np.array([])
+    return hull, interior_points
+
+# Main
+if __name__ == "__main__":
+    file_path = "C:\\Users\\ASUS\\Desktop\\optimization_results.xlsx"
+    print("Loading data...")
+    points = load_data(file_path)
+    print(f"Successfully loaded {len(points)} points.")
+
+    print("Plotting scatter and computing convex hull...")
+    hull, interior_points = plot_convex_hull(points)
+    print(f"Found {len(interior_points)} interior points (not displayed).")
+    print(f"Displayed {len(hull.vertices)} points on the convex hull.")
+    print("Done.")
