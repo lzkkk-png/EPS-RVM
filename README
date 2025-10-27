@@ -1,0 +1,41 @@
+EPS-RVM
+This repository provides code for an efficient multi-objective non-dominated solution set generation method for cross-basin water transfer scheduling problems. The approach, based on the Rotation Vector Method (RVM), explores the convex objective space boundaries and significantly enhances the solution set compared to traditional EPS relaxation methods. This method increases the number of non-dominated solutions while improving the quality of the solution set in terms of hypervolume and spacing, under the same computational cost. The repository contains the following files:
+
+Rotation Vector Method for Exploring the Convex Objective Space: This file contains the original code implementing the Rotation Vector Method for searching the boundary of the objective space.
+
+Model: This file includes the source code for the South-to-North Water Transfer Project East Route scheduling model.
+
+Convex Hull Algorithm: This file implements the convex hull algorithm for identifying the boundary of the objective space.
+
+This approach provides a novel solution for multi-objective optimization in complex cross-basin water transfer systems, with improved computational efficiency and solution quality.
+
+Data Availability
+
+Data for the multi-objective scheduling problem related to the South-to-North Water Transfer Project (East Route) can be obtained from the following sources:
+
+Ministry of Water Resources of China official website: http://www.mwr.gov.cn/
+
+South-to-North Water Diversion Group official website: http://www.csnwd.com.cn/
+
+National Earth System Science Data Center: https://www.geodata.cn/data/index.html
+
+Installation & Setup
+
+To run the code in this repository, please ensure the following dependencies are installed:
+
+Python 3.8+
+
+NumPy ≥ 1.19
+
+Pandas ≥ 1.1
+
+Matplotlib ≥ 3.x
+
+SciPy ≥ 1.x
+
+Pyomo ≥ 5.x (for optimization modeling)
+Contact
+
+Maintainer: ZEKUN LI
+Feel free to reach out for questions or collaboration.
+Email:2219010125@hhu.edu.cn
